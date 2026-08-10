@@ -1,0 +1,148 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Resume Extractor</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <h1>Resume PDF Extractor</h1>
+    <p>Upload one or more resume PDFs to extract name, email, and phone number.</p>
+
+    <input type="file" id="pdfFile" accept=".pdf" multiple />
+    <button id="extractButton">Extract Details</button>
+    <button id="downloadCsvButton" disabled>Download CSV</button>
+
+    <p id="fileName"></p>
+    <p id="result"></p>
+
+    <table border="1" cellpadding="8">
+      <thead>
+        <tr>
+          <th>File Name</th>
+          <th>Method</th>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Phone</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="resultsTable"></tbody>
+    </table>
+
+    <script>
+      const pdfFile = document.getElementById("pdfFile");
+      const extractButton = document.getElementById("extractButton");
+      const downloadCsvButton = document.getElementById("downloadCsvButton");
+      const fileName = document.getElementById("fileName");
+      const result = document.getElementById("result");
+      const resultsTable = document.getElementById("resultsTable");
+
+      let extractedData = [];
+
+      pdfFile.addEventListener("change", function () {
+        if (pdfFile.files.length > 0) {
+          fileName.textContent =
+            pdfFile.files.length + " PDF file(s) selected.";
+        }
+      });
+
+      extractButton.addEventListener("click", async function () {
+        if (pdfFile.files.length === 0) {
+          result.textContent = "Please select at least one PDF first.";
+          return;
+        }
+
+        const formData = new FormData();
+
+        for (const file of pdfFile.files) {
+          formData.append("pdfFiles", file);
+        }
+
+        result.textContent = "Processing PDF files...";
+        extractButton.disabled = true;
+        downloadCsvButton.disabled = true;
+        resultsTable.innerHTML = "";
+
+        try {
+          const response = await fetch("/upload", {
+            method: "POST",
+            body: formData
+          });
+
+          const data = await response.json();
+
+          if (data.error) {
+            result.textContent = data.error;
+            return;
+          }
+
+          extractedData = data.results;
+
+          result.textContent =
+            data.message + ": " + extractedData.length + " file(s).";
+
+          for (const item of extractedData) {
+            const row = document.createElement("tr");
+
+            row.innerHTML = `
+              <td>${item.file_name || ""}</td>
+              <td>${item.extraction_method || "-"}</td>
+              <td>${item.name || "Not found"}</td>
+              <td>${item.email || "Not found"}</td>
+              <td>${item.phone || "Not found"}</td>
+              <td>${item.error || "Success"}</td>
+            `;
+
+            resultsTable.appendChild(row);
+          }
+
+          downloadCsvButton.disabled = false;
+
+        } catch (error) {
+          result.textContent = "Something went wrong: " + error.message;
+
+        } finally {
+          extractButton.disabled = false;
+        }
+      });
+
+      downloadCsvButton.addEventListener("click", function () {
+        if (extractedData.length === 0) {
+          return;
+        }
+
+        let csvContent = "File Name,Name,Email,Phone,Method,Status\n";
+
+        for (const item of extractedData) {
+          const row = [
+            item.file_name || "",
+            item.name || "",
+            item.email || "",
+            item.phone || "",
+            item.extraction_method || "",
+            item.error || "Success"
+          ];
+
+          const safeRow = row.map(function (value) {
+            return `"${String(value).replace(/"/g, '""')}"`;
+          });
+
+          csvContent += safeRow.join(",") + "\n";
+        }
+
+        const csvFile = new Blob([csvContent], {
+          type: "text/csv"
+        });
+
+        const downloadLink = document.createElement("a");
+
+        downloadLink.href = URL.createObjectURL(csvFile);
+        downloadLink.download = "extracted-details.csv";
+
+        downloadLink.click();
+
+        URL.revokeObjectURL(downloadLink.href);
+      });
+    </script>
+  </body>
+</html>
